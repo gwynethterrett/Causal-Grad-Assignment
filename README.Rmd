@@ -1,0 +1,87 @@
+---
+title: "Does Church Attendance Lead to Alcoholism?"
+author: "Gwyneth Terrett"
+date: "4/26/2022"
+output: github_document
+---
+Hey statisticians! Welcome back to my blog. This week I'd like to review one of the main assumptions used in causal analysis, which is unconfoundedness. Exposure assignment is unconfounded if it does not depend on the potential outcomes. In mathematical form this assumption is written as $P(X|Z,Y(0),Y(1)= P(X|Z,Y^{'}(0),Y^{'}(1)$, where $X$ is the exposure assignment, $Z$ is a matrix of pre-exposure covariates, and $Y(0)$, $Y(1)$, $Y^{'}(0)$, and $Y^{'}(1)$ are potential outcomes. To be unconfounded this equation must hold true for all $X$, $Z$, $Y(0)$, $Y(1)$, $Y^{'}(0)$, and $Y^{'}(1)$.
+
+As an example, suppose we collect data on a population with access to both wine and churches. We would like to determine whether attending church has a causal effect on the number of glasses of wine a participant consumes on a daily basis. To answer this question we choose church attendance as the exposure variable and the number of glasses of wine as the outcome variable. In addition, suppose we consider a variable that measures a participant's level of stress. We determine that stress has a causal relationship with both church attendance and the number of glasses of wine, as those who experience stress may attend church as a means to find peace and/or have a glass of wine to calm their nerves. Taking only these variables into account for the sake of simplicity, we construct the following Directed Acyclic Graph:
+
+```{r, message=FALSE}
+library(ggdag)
+
+g <- dagify(
+  church ~ stress,
+  wine ~ stress,
+  exposure = "church",
+  outcome = "wine"
+)
+
+g %>% 
+  ggdag()+
+  theme_dag()+
+  geom_dag_text(color = "pink")
+```
+
+The graph above shows us that stress is related to both our exposure and outcome variable and therefore is a confounding variable. It is important to account for confounding variables when performing statistical analysis as these extraneous variables can skew a causal effect estimate and lead to misleading results. To further solidify this concept, let's simulate a dataset with the variables already discussed:
+
+```{r, message=FALSE}
+library(tidyverse)
+```
+
+```{r}
+set.seed(10)
+n <- 999
+collected_data <- tibble(
+  stress = sample(rep(c(0,1,2), each = n / 3)),
+  wine = case_when(
+    stress == 2 ~ rbinom(n, 5, 0.8),
+    stress == 1 ~ rbinom(n, 3, 0.6),
+    stress == 0 ~ rbinom(n, 1, 0.4)
+  ),
+  y0 = wine,
+  y1 = wine,
+  church = case_when(
+    stress == 2 ~ rbinom(n, 1, 0.7),
+    stress == 1 ~ rbinom(n, 1, 0.2), 
+    stress == 0 ~ rbinom(n, 1, 0.1) 
+  ), 
+  y_obs = ifelse(church == 1, y1, y0)
+)
+```
+
+```{r}
+head(collected_data)
+```
+
+In our simulated dataset above we have the confounding variable stress take on values 0 through 2, where 0 represents a low level of stress and 2 represents a high level of stress. The outcome variable wine takes on values of 0 through 5, representing the number of glasses a participant consumes on a daily basis. Finally, we have a binary outcome variable of church that indicates church attendance. By setting the potential outcome for those who attend church equal to the potential outcome for those who do not attend church, we constrain our dataset to a true causal effect of zero as there is no difference in value between the means of these two variables. Consequently we conclude that there is no difference in the average number of glasses of wine consumed by participants who attend church than those who don't.
+
+```{r}
+collected_data %>%
+  summarise(true_causal_effect = mean(y1) - mean(y0))
+```
+
+Using our observed data, however, we obtain the following causal effect estimate:
+
+```{r}
+collected_data %>%
+  summarise(observed_causal_effect = 
+              sum(y_obs * church) / sum(church) -
+              sum(y_obs * (1 - church)) / sum(1 - church))
+```
+
+This causal effect estimate suggests that the average number of glasses of wines consumed by participants who attend church is 1.75 more glasses than those who do not attend church. Such a difference from the true causal effect is due to our confounding variable stress. If we condition on stress, we can obtain causal effect estimates that are closer to the true causal effect:
+
+```{r}
+collected_data %>%
+  group_by(stress) %>%
+  summarise(observed_causal_effect = 
+              sum(y_obs * church) / sum(church) - 
+              sum(y_obs * (1 - church)) / sum(1 - church))
+```
+
+In conclusion, when we violate the unconfoundedness assumption, we cannot guarantee that our causal effect estimate will accurately represent the relationship between our exposure and outcome variables. Confounding variables can mistakenly lead us to believe certain causal relationships exist when in reality they do not, as seen with the example of church attendance and number of glasses of wine consumed. To correct the bias introduced by this phenomena, we can condition on the confounding variable and once again have an exposure assignment that is independent of the potential outcomes.
+
+
+
